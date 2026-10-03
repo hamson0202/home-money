@@ -4,6 +4,8 @@ export type Household = {
   unit: string;
   /** 住戶姓名，可留空 */
   name: string;
+  /** 手機號碼，可留空 */
+  phone: string;
   /** 綁定的帳號末五碼，一戶可以有多組 */
   codes: string[];
 };

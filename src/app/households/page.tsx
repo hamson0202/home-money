@@ -12,7 +12,8 @@ export default function HouseholdsPage() {
   return <Households data={data} />;
 }
 
-const EMPTY_FORM = { unit: "", name: "", codes: "" };
+const EMPTY_FORM = { unit: "", name: "", phone: "", codes: "" };
+const PHONE_RE = /^[\d\s()+-]*$/;
 
 function Households({ data }: { data: AppData }) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -29,7 +30,7 @@ function Households({ data }: { data: AppData }) {
   }
 
   function startEdit(h: Household) {
-    setForm({ unit: h.unit, name: h.name, codes: h.codes.join(" ") });
+    setForm({ unit: h.unit, name: h.name, phone: h.phone, codes: h.codes.join(" ") });
     setEditingId(h.id);
     setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -41,13 +42,15 @@ function Households({ data }: { data: AppData }) {
     if (data.households.some((h) => h.unit === unit && h.id !== editingId)) {
       return setError(`戶號「${unit}」已經存在`);
     }
+    const phone = form.phone.trim();
+    if (!PHONE_RE.test(phone)) return setError("手機號碼只能包含數字、空白或「-」");
     const { codes, invalid } = parseCodes(form.codes);
     if (invalid.length) return setError(`末五碼必須是 5 位數字：${invalid.join("、")}`);
     for (const code of codes) {
       const owner = codeIndex.get(code);
       if (owner && owner.id !== editingId) return setError(`末五碼 ${code} 已經屬於「${owner.unit}」`);
     }
-    const input = { unit, name: form.name.trim(), codes: [...new Set(codes)] };
+    const input = { unit, name: form.name.trim(), phone, codes: [...new Set(codes)] };
     if (editingId) updateHousehold(editingId, input);
     else addHousehold(input);
     reset();
@@ -89,22 +92,33 @@ function Households({ data }: { data: AppData }) {
                 className={inputClass}
               />
             </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-slate-600">手機號碼</span>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                autoComplete="off"
+                placeholder="例如：0912-345-678"
+                className={inputClass}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-slate-600">帳號末五碼（可多組，用空白或逗號分開）</span>
+              <input
+                value={form.codes}
+                onChange={(e) => setForm({ ...form, codes: e.target.value })}
+                inputMode="numeric"
+                placeholder="例如：12345 67890"
+                className={`${inputClass} font-mono`}
+              />
+              {editingId && (
+                <span className="mt-1 block text-xs text-slate-500">
+                  注意：移除末五碼後，過去各期用這組末五碼繳的紀錄也會變成「對不到住戶」。
+                </span>
+              )}
+            </label>
           </div>
-          <label className="block">
-            <span className="mb-1 block text-sm text-slate-600">帳號末五碼（可多組，用空白或逗號分開）</span>
-            <input
-              value={form.codes}
-              onChange={(e) => setForm({ ...form, codes: e.target.value })}
-              inputMode="numeric"
-              placeholder="例如：12345 67890"
-              className={`${inputClass} font-mono`}
-            />
-            {editingId && (
-              <span className="mt-1 block text-xs text-slate-500">
-                注意：移除末五碼後，過去各期用這組末五碼繳的紀錄也會變成「對不到住戶」。
-              </span>
-            )}
-          </label>
           {error && <p className="text-sm text-rose-600">{error}</p>}
           <div className="flex justify-end gap-2">
             {editingId && <Button onClick={reset}>取消</Button>}
@@ -130,6 +144,11 @@ function Households({ data }: { data: AppData }) {
                     {h.unit}
                     {h.name && <span className="ml-2 font-normal text-slate-500">{h.name}</span>}
                   </div>
+                  {h.phone && (
+                    <a href={`tel:${h.phone.replace(/[^\d+]/g, "")}`} className="text-sm text-emerald-700 underline">
+                      {h.phone}
+                    </a>
+                  )}
                   <div className="mt-1 flex flex-wrap gap-1">
                     {h.codes.length ? (
                       h.codes.map((c) => (

@@ -36,6 +36,7 @@ export function parseAppData(raw: unknown): AppData {
       id: h.id,
       unit: h.unit,
       name: typeof h.name === "string" ? h.name : "",
+      phone: typeof h.phone === "string" ? h.phone : "",
       codes: stringList(h.codes, CODE_RE),
     };
   });
