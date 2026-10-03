@@ -1,6 +1,6 @@
 import type { Workbook, Worksheet } from "exceljs";
 import { downloadBlob } from "./download";
-import { computeMonth, formatMonth, hasRecord, sortHouseholds } from "./logic";
+import { computePeriod, formatPeriod, hasRecord, shortPeriod, sortHouseholds } from "./logic";
 import type { AppData } from "./types";
 
 async function createWorkbook(): Promise<Workbook> {
@@ -24,21 +24,21 @@ async function save(workbook: Workbook, filename: string) {
   );
 }
 
-export async function exportMonthExcel(data: AppData, month: string) {
+export async function exportPeriodExcel(data: AppData, period: string) {
   const workbook = await createWorkbook();
-  const { byHousehold, unmatched } = computeMonth(data, month);
+  const { byHousehold, unmatched } = computePeriod(data, period);
 
-  const sheet = workbook.addWorksheet(formatMonth(month));
+  const sheet = workbook.addWorksheet(shortPeriod(period) + "半年");
   sheet.columns = [
     { header: "戶號", key: "unit", width: 14 },
     { header: "住戶姓名", key: "name", width: 16 },
     { header: "狀態", key: "status", width: 10 },
     { header: "繳費方式", key: "method", width: 14 },
-    { header: "轉帳末五碼", key: "codes", width: 20 },
+    { header: "匯款末五碼", key: "codes", width: 20 },
   ];
   for (const h of sortHouseholds(data.households)) {
     const s = byHousehold.get(h.id)!;
-    const methods = [s.codes.length ? "轉帳" : "", s.cash ? "現金" : ""].filter(Boolean);
+    const methods = [s.codes.length ? "匯款" : "", s.cash ? "現金" : ""].filter(Boolean);
     const row = sheet.addRow({
       unit: h.unit,
       name: h.name,
@@ -57,20 +57,20 @@ export async function exportMonthExcel(data: AppData, month: string) {
     styleHeader(other);
   }
 
-  await save(workbook, `管理費_${month}.xlsx`);
+  await save(workbook, `管理費_${shortPeriod(period)}半年.xlsx`);
 }
 
-export async function exportYearExcel(data: AppData, year: number) {
+/** 匯出多期的繳費總表 */
+export async function exportHistoryExcel(data: AppData, periods: string[]) {
   const workbook = await createWorkbook();
-  const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
-  const results = months.map((m) => (hasRecord(data, m) ? computeMonth(data, m).byHousehold : null));
+  const results = periods.map((p) => (hasRecord(data, p) ? computePeriod(data, p).byHousehold : null));
 
-  const sheet = workbook.addWorksheet(`${year} 年`);
+  const sheet = workbook.addWorksheet("繳費總表");
   sheet.columns = [
     { header: "戶號", key: "unit", width: 14 },
     { header: "住戶姓名", key: "name", width: 16 },
-    ...months.map((_, i) => ({ header: `${i + 1} 月`, key: `m${i}`, width: 8 })),
-    { header: "未繳月數", key: "unpaid", width: 10 },
+    ...periods.map((p, i) => ({ header: formatPeriod(p), key: `p${i}`, width: 22 })),
+    { header: "未繳期數", key: "unpaid", width: 10 },
   ];
   for (const h of sortHouseholds(data.households)) {
     const values: Record<string, string | number> = { unit: h.unit, name: h.name };
@@ -78,12 +78,12 @@ export async function exportYearExcel(data: AppData, year: number) {
     results.forEach((byHousehold, i) => {
       const s = byHousehold?.get(h.id);
       if (!s) {
-        values[`m${i}`] = "";
+        values[`p${i}`] = "";
       } else if (!s.paid) {
-        values[`m${i}`] = "未繳";
+        values[`p${i}`] = "未繳";
         unpaid++;
       } else {
-        values[`m${i}`] = s.codes.length ? "已繳" : "現金";
+        values[`p${i}`] = s.codes.length ? `匯款 ${s.codes.join("、")}` : "現金";
       }
     });
     values.unpaid = unpaid;
@@ -94,5 +94,5 @@ export async function exportYearExcel(data: AppData, year: number) {
   }
   styleHeader(sheet);
 
-  await save(workbook, `管理費_${year}年.xlsx`);
+  await save(workbook, `管理費_繳費總表.xlsx`);
 }

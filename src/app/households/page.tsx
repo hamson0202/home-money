@@ -101,7 +101,7 @@ function Households({ data }: { data: AppData }) {
             />
             {editingId && (
               <span className="mt-1 block text-xs text-slate-500">
-                注意：移除末五碼後，過去月份用這組末五碼繳的紀錄也會變成「對不到住戶」。
+                注意：移除末五碼後，過去各期用這組末五碼繳的紀錄也會變成「對不到住戶」。
               </span>
             )}
           </label>

@@ -12,18 +12,48 @@ export function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-export function monthKey(date = new Date()): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+/**
+ * 收費期別：每年 1 月繳上半年、7 月繳下半年。
+ * 期別 key 為 "YYYY-01"（上半年）或 "YYYY-07"（下半年）。
+ */
+export function periodKey(date = new Date()): string {
+  return `${date.getFullYear()}-${date.getMonth() < 6 ? "01" : "07"}`;
 }
 
-export function shiftMonth(key: string, delta: number): string {
-  const [y, m] = key.split("-").map(Number);
-  return monthKey(new Date(y, m - 1 + delta, 1));
+/** 把任何 "YYYY-MM" 歸到它所屬的期別（舊資料以月份記錄時用來轉換） */
+export function toPeriodKey(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return `${y}-${m <= 6 ? "01" : "07"}`;
 }
 
-export function formatMonth(key: string): string {
+function periodIndex(key: string): number {
   const [y, m] = key.split("-").map(Number);
-  return `${y} 年 ${m} 月`;
+  return y * 2 + (m >= 7 ? 1 : 0);
+}
+
+function periodFromIndex(index: number): string {
+  return `${Math.floor(index / 2)}-${index % 2 ? "07" : "01"}`;
+}
+
+export function shiftPeriod(key: string, delta: number): string {
+  return periodFromIndex(periodIndex(key) + delta);
+}
+
+/** 從 from 到 to（含）的所有期別 */
+export function periodRange(from: string, to: string): string[] {
+  const result: string[] = [];
+  for (let i = periodIndex(from); i <= periodIndex(to); i++) result.push(periodFromIndex(i));
+  return result;
+}
+
+export function formatPeriod(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return `${y} 年${m === 1 ? "上" : "下"}半年（${m} 月繳）`;
+}
+
+export function shortPeriod(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return `${y}${m === 1 ? "上" : "下"}`;
 }
 
 export function householdLabel(h: Household): string {
@@ -58,9 +88,9 @@ export function buildCodeIndex(households: Household[]): Map<string, Household> 
   return index;
 }
 
-/** 計算某個月每一戶的繳費狀態，以及對不到住戶的末五碼 */
-export function computeMonth(data: AppData, month: string) {
-  const record = data.months[month] ?? EMPTY_RECORD;
+/** 計算某一期每一戶的繳費狀態，以及對不到住戶的末五碼 */
+export function computePeriod(data: AppData, period: string) {
+  const record = data.months[period] ?? EMPTY_RECORD;
   const index = buildCodeIndex(data.households);
   const cash = new Set(record.cash);
   const byHousehold = new Map<string, PayStatus>();
@@ -81,13 +111,13 @@ export function computeMonth(data: AppData, month: string) {
   return { byHousehold, unmatched };
 }
 
-/** 這個月是否已經開始對帳（有輸入過任何資料） */
-export function hasRecord(data: AppData, month: string): boolean {
-  const record = data.months[month];
+/** 這一期是否已經開始對帳（有輸入過任何資料） */
+export function hasRecord(data: AppData, period: string): boolean {
+  const record = data.months[period];
   return !!record && (record.codes.length > 0 || record.cash.length > 0);
 }
 
-export function recordedMonths(data: AppData): string[] {
+export function recordedPeriods(data: AppData): string[] {
   return Object.keys(data.months)
     .filter((m) => hasRecord(data, m))
     .sort();

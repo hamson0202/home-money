@@ -34,7 +34,7 @@ export function Button({
   );
 }
 
-export function MonthSwitcher({ label, onPrev, onNext }: { label: string; onPrev: () => void; onNext: () => void }) {
+export function PeriodSwitcher({ label, onPrev, onNext }: { label: string; onPrev: () => void; onNext: () => void }) {
   return (
     <div className="flex items-center justify-center gap-2">
       <Button onClick={onPrev} aria-label="上一個">

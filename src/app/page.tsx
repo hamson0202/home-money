@@ -2,29 +2,31 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Button, Card, Loading, MonthSwitcher, inputClass } from "@/components/ui";
-import { exportMonthExcel } from "@/lib/excel";
+import { Button, Card, Loading, PeriodSwitcher, inputClass } from "@/components/ui";
+import { exportPeriodExcel } from "@/lib/excel";
+import { exportListPdf } from "@/lib/pdf";
+import { todayString } from "@/lib/download";
 import {
   EMPTY_RECORD,
   buildCodeIndex,
-  computeMonth,
-  formatMonth,
+  computePeriod,
+  formatPeriod,
   householdLabel,
-  monthKey,
+  periodKey,
   parseCodes,
-  shiftMonth,
+  shiftPeriod,
   sortHouseholds,
 } from "@/lib/logic";
-import { addMonthCodes, bindCode, removeMonthCode, toggleCash, useAppData } from "@/lib/store";
+import { addPeriodCodes, bindCode, removePeriodCode, toggleCash, useAppData } from "@/lib/store";
 import type { AppData, Household, PayStatus } from "@/lib/types";
 
 const BACKUP_REMINDER_DAYS = 30;
 
 export default function ReconcilePage() {
   const data = useAppData();
-  const [month, setMonth] = useState(() => monthKey());
+  const [period, setPeriod] = useState(() => periodKey());
   if (!data) return <Loading />;
-  return <Reconcile data={data} month={month} onMonthChange={setMonth} />;
+  return <Reconcile data={data} period={period} onPeriodChange={setPeriod} />;
 }
 
 type Feedback = {
@@ -35,27 +37,26 @@ type Feedback = {
 
 type Filter = "all" | "unpaid" | "paid";
 
-function Reconcile({ data, month, onMonthChange }: { data: AppData; month: string; onMonthChange: (m: string) => void }) {
+function Reconcile({ data, period, onPeriodChange }: { data: AppData; period: string; onPeriodChange: (p: string) => void }) {
   const [text, setText] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [exporting, setExporting] = useState(false);
+  const [busy, setBusy] = useState<"excel" | "pdf" | null>(null);
   const [now] = useState(() => Date.now());
 
   const households = useMemo(() => sortHouseholds(data.households), [data.households]);
   const codeIndex = useMemo(() => buildCodeIndex(data.households), [data.households]);
-  const { byHousehold, unmatched } = useMemo(() => computeMonth(data, month), [data, month]);
-  const record = data.months[month] ?? EMPTY_RECORD;
+  const { byHousehold, unmatched } = useMemo(() => computePeriod(data, period), [data, period]);
+  const record = data.months[period] ?? EMPTY_RECORD;
 
   const paidCount = households.filter((h) => byHousehold.get(h.id)?.paid).length;
-  const unpaidList = households.filter((h) => !byHousehold.get(h.id)?.paid);
   const visible = households.filter((h) => {
     const paid = byHousehold.get(h.id)?.paid;
     return filter === "all" || (filter === "paid" ? paid : !paid);
   });
 
-  function changeMonth(delta: number) {
-    onMonthChange(shiftMonth(month, delta));
+  function changePeriod(delta: number) {
+    onPeriodChange(shiftPeriod(period, delta));
     setFeedback(null);
   }
 
@@ -73,19 +74,46 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
         added.push({ code, owner: codeIndex.get(code) });
       }
     }
-    if (added.length) addMonthCodes(month, added.map((a) => a.code));
+    if (added.length) addPeriodCodes(period, added.map((a) => a.code));
     setFeedback({ added, duplicated, invalid });
     setText("");
   }
 
-  async function exportExcel() {
-    setExporting(true);
+  async function runExport(kind: NonNullable<typeof busy>, task: () => Promise<void>) {
+    setBusy(kind);
     try {
-      await exportMonthExcel(data, month);
+      await task();
+    } catch {
+      alert("匯出失敗，請再試一次。");
     } finally {
-      setExporting(false);
+      setBusy(null);
     }
   }
+
+  function exportPdf() {
+    const unpaid = households.length - paidCount;
+    return runExport("pdf", () =>
+      exportListPdf({
+        title: `${data.communityName ? `${data.communityName} ` : ""}${formatPeriod(period)} 管理費繳費總表`,
+        subtitle: `共 ${households.length} 戶　已繳 ${paidCount} 戶　未繳 ${unpaid} 戶　製表日期 ${todayString()}`,
+        rows: households,
+        columns: [
+          { header: "序號", width: 110, value: (_, i) => String(i + 1) },
+          { header: "戶號", width: 220, value: (h) => h.unit },
+          { header: "住戶姓名", width: 260, value: (h) => h.name },
+          {
+            header: "狀態",
+            width: 130,
+            value: (h) => (byHousehold.get(h.id)!.paid ? "已繳" : "未繳"),
+            color: (h) => (byHousehold.get(h.id)!.paid ? undefined : "#dc2626"),
+          },
+          { header: "匯款末五碼", width: 320, value: (h) => paymentLabel(byHousehold.get(h.id)!) },
+        ],
+        filename: `管理費繳費總表_${period.slice(0, 4)}${period.endsWith("01") ? "上" : "下"}半年.pdf`,
+      }),
+    );
+  }
+
 
   const daysSinceBackup = data.lastBackupAt
     ? (now - new Date(data.lastBackupAt).getTime()) / 86_400_000
@@ -93,8 +121,8 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
 
   return (
     <>
-      <div className="space-y-4 print:hidden">
-        <MonthSwitcher label={formatMonth(month)} onPrev={() => changeMonth(-1)} onNext={() => changeMonth(1)} />
+      <div className="space-y-4">
+        <PeriodSwitcher label={formatPeriod(period)} onPrev={() => changePeriod(-1)} onNext={() => changePeriod(1)} />
 
         {households.length === 0 ? (
           <Card>
@@ -145,7 +173,7 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
               {feedback && <FeedbackView feedback={feedback} />}
               {record.codes.length > 0 && (
                 <div className="mt-4 border-t border-slate-100 pt-3">
-                  <p className="mb-2 text-sm text-slate-500">本月已輸入 {record.codes.length} 筆（點 × 可刪除打錯的）</p>
+                  <p className="mb-2 text-sm text-slate-500">本期已輸入 {record.codes.length} 筆（點 × 可刪除打錯的）</p>
                   <div className="flex flex-wrap gap-2">
                     {record.codes.map((code) => {
                       const owner = codeIndex.get(code);
@@ -160,7 +188,7 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
                           <span className="text-xs opacity-70">{owner ? owner.unit : "未對應"}</span>
                           <button
                             type="button"
-                            onClick={() => removeMonthCode(month, code)}
+                            onClick={() => removePeriodCode(period, code)}
                             className="ml-1 flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/10"
                             aria-label={`刪除 ${code}`}
                           >
@@ -181,7 +209,7 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
                 </p>
                 <ul className="space-y-2">
                   {unmatched.map((code) => (
-                    <UnmatchedRow key={code} code={code} month={month} households={households} />
+                    <UnmatchedRow key={code} code={code} period={period} households={households} />
                   ))}
                 </ul>
               </Card>
@@ -190,12 +218,12 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
             <Card
               title="住戶繳費狀態"
               actions={
-                <div className="flex gap-2">
-                  <Button onClick={() => window.print()} disabled={unpaidList.length === 0}>
-                    列印未繳名單
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={exportPdf} disabled={!!busy}>
+                    {busy === "pdf" ? "產生中…" : "匯出總表 PDF"}
                   </Button>
-                  <Button onClick={exportExcel} disabled={exporting}>
-                    {exporting ? "匯出中…" : "匯出 Excel"}
+                  <Button onClick={() => runExport("excel", () => exportPeriodExcel(data, period))} disabled={!!busy}>
+                    {busy === "excel" ? "匯出中…" : "匯出 Excel"}
                   </Button>
                 </div>
               }
@@ -227,7 +255,7 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {visible.map((h) => (
-                    <HouseholdRow key={h.id} household={h} status={byHousehold.get(h.id)!} month={month} />
+                    <HouseholdRow key={h.id} household={h} status={byHousehold.get(h.id)!} period={period} />
                   ))}
                 </ul>
               )}
@@ -236,9 +264,14 @@ function Reconcile({ data, month, onMonthChange }: { data: AppData; month: strin
         )}
       </div>
 
-      <PrintSheet title={`${data.communityName ? `${data.communityName} ` : ""}${formatMonth(month)} 管理費未繳名單`} list={unpaidList} />
     </>
   );
+}
+
+function paymentLabel(status: PayStatus): string {
+  return [...status.codes, status.cash ? "現金" : ""]
+    .filter(Boolean)
+    .join("、");
 }
 
 function Stats({ paid, total }: { paid: number; total: number }) {
@@ -278,7 +311,7 @@ function FeedbackView({ feedback }: { feedback: Feedback }) {
         </p>
       ))}
       {feedback.duplicated.length > 0 && (
-        <p className="text-slate-500">本月已輸入過，略過：{feedback.duplicated.join("、")}</p>
+        <p className="text-slate-500">本期已輸入過，略過：{feedback.duplicated.join("、")}</p>
       )}
       {feedback.invalid.length > 0 && (
         <p className="text-rose-600">不是 5 位數字，略過：{feedback.invalid.join("、")}</p>
@@ -287,7 +320,7 @@ function FeedbackView({ feedback }: { feedback: Feedback }) {
   );
 }
 
-function UnmatchedRow({ code, month, households }: { code: string; month: string; households: Household[] }) {
+function UnmatchedRow({ code, period, households }: { code: string; period: string; households: Household[] }) {
   const [target, setTarget] = useState("");
   return (
     <li className="flex flex-wrap items-center gap-2">
@@ -303,14 +336,14 @@ function UnmatchedRow({ code, month, households }: { code: string; month: string
       <Button variant="primary" disabled={!target} onClick={() => bindCode(target, code)}>
         指定
       </Button>
-      <Button variant="danger" onClick={() => removeMonthCode(month, code)}>
+      <Button variant="danger" onClick={() => removePeriodCode(period, code)}>
         刪除
       </Button>
     </li>
   );
 }
 
-function HouseholdRow({ household, status, month }: { household: Household; status: PayStatus; month: string }) {
+function HouseholdRow({ household, status, period }: { household: Household; status: PayStatus; period: string }) {
   return (
     <li className="flex items-center gap-3 py-3">
       <div className="min-w-0 flex-1">
@@ -319,48 +352,33 @@ function HouseholdRow({ household, status, month }: { household: Household; stat
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {status.codes.length > 0 && (
-          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">
-            轉帳 {status.codes.join("、")}
-          </span>
+          <>
+            <span className="font-mono text-sm text-slate-600">{status.codes.join("、")}</span>
+            <span className="inline-flex min-h-10 items-center rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white">
+              匯款已繳
+            </span>
+          </>
         )}
-        {status.cash && (
-          <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-medium text-sky-800">現金</span>
-        )}
-        {!status.paid && (
-          <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">未繳</span>
-        )}
-        {(status.cash || status.codes.length === 0) && (
-          <Button onClick={() => toggleCash(month, household.id)} className="text-xs">
-            {status.cash ? "取消現金" : "現金已繳"}
+        {status.cash ? (
+          <Button
+            variant="primary"
+            onClick={() => toggleCash(period, household.id)}
+            title="點一下可取消現金繳費"
+            className="text-xs"
+          >
+            現金已繳 ✕
           </Button>
+        ) : (
+          !status.paid && (
+            <>
+              <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700">未繳</span>
+              <Button onClick={() => toggleCash(period, household.id)} className="text-xs">
+                現金已繳
+              </Button>
+            </>
+          )
         )}
       </div>
     </li>
-  );
-}
-
-function PrintSheet({ title, list }: { title: string; list: Household[] }) {
-  return (
-    <div className="hidden print:block">
-      <h1 className="mb-1 text-center text-2xl font-bold">{title}</h1>
-      <p className="mb-6 text-center text-sm">共 {list.length} 戶</p>
-      <table className="w-full border-collapse text-lg">
-        <thead>
-          <tr>
-            <th className="border border-black px-3 py-2 text-left">戶號</th>
-            <th className="border border-black px-3 py-2 text-left">住戶姓名</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((h) => (
-            <tr key={h.id}>
-              <td className="border border-black px-3 py-2">{h.unit}</td>
-              <td className="border border-black px-3 py-2">{h.name}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-8 text-right">請尚未繳納的住戶儘速繳交，謝謝配合。</p>
-    </div>
   );
 }

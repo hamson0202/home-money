@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Button, Card, Loading, inputClass } from "@/components/ui";
 import { downloadBlob, todayString } from "@/lib/download";
-import { recordedMonths } from "@/lib/logic";
+import { recordedPeriods } from "@/lib/logic";
 import { markBackedUp, parseAppData, replaceAllData, setCommunityName, useAppData } from "@/lib/store";
 import type { AppData } from "@/lib/types";
 
@@ -30,7 +30,7 @@ function Settings({ data }: { data: AppData }) {
   async function importBackup(file: File) {
     try {
       const imported = parseAppData(JSON.parse(await file.text()));
-      const summary = `${imported.households.length} 戶、${recordedMonths(imported).length} 個月的紀錄`;
+      const summary = `${imported.households.length} 戶、${recordedPeriods(imported).length} 期的紀錄`;
       if (!confirm(`備份檔內有 ${summary}。\n還原後會「覆蓋」目前這個瀏覽器裡的所有資料，確定要還原嗎？`)) return;
       replaceAllData(imported);
       setMessage({ ok: true, text: `還原完成：${summary}。` });

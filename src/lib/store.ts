@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { CODE_RE, EMPTY_RECORD, MONTH_RE, newId } from "./logic";
+import { CODE_RE, EMPTY_RECORD, MONTH_RE, newId, toPeriodKey } from "./logic";
 import type { AppData, Household, MonthRecord } from "./types";
 
 const STORAGE_KEY = "home-money:data";
@@ -42,7 +42,13 @@ export function parseAppData(raw: unknown): AppData {
   const months: Record<string, MonthRecord> = {};
   for (const [key, value] of Object.entries(raw.months)) {
     if (!MONTH_RE.test(key) || !isObject(value)) continue;
-    months[key] = { codes: stringList(value.codes, CODE_RE), cash: stringList(value.cash) };
+    // 舊版以月份記錄，合併到所屬的期別
+    const period = toPeriodKey(key);
+    const existing = months[period] ?? EMPTY_RECORD;
+    months[period] = {
+      codes: [...new Set([...existing.codes, ...stringList(value.codes, CODE_RE)])],
+      cash: [...new Set([...existing.cash, ...stringList(value.cash)])],
+    };
   }
   return {
     version: 1,
@@ -111,10 +117,10 @@ function update(updater: (data: AppData) => AppData) {
   listeners.forEach((l) => l());
 }
 
-function updateMonth(month: string, updater: (record: MonthRecord) => MonthRecord) {
+function updatePeriod(period: string, updater: (record: MonthRecord) => MonthRecord) {
   update((d) => ({
     ...d,
-    months: { ...d.months, [month]: updater(d.months[month] ?? EMPTY_RECORD) },
+    months: { ...d.months, [period]: updater(d.months[period] ?? EMPTY_RECORD) },
   }));
 }
 
@@ -149,16 +155,16 @@ export function bindCode(householdId: string, code: string) {
   }));
 }
 
-export function addMonthCodes(month: string, codes: string[]) {
-  updateMonth(month, (r) => ({ ...r, codes: [...r.codes, ...codes.filter((c) => !r.codes.includes(c))] }));
+export function addPeriodCodes(period: string, codes: string[]) {
+  updatePeriod(period, (r) => ({ ...r, codes: [...r.codes, ...codes.filter((c) => !r.codes.includes(c))] }));
 }
 
-export function removeMonthCode(month: string, code: string) {
-  updateMonth(month, (r) => ({ ...r, codes: r.codes.filter((c) => c !== code) }));
+export function removePeriodCode(period: string, code: string) {
+  updatePeriod(period, (r) => ({ ...r, codes: r.codes.filter((c) => c !== code) }));
 }
 
-export function toggleCash(month: string, householdId: string) {
-  updateMonth(month, (r) => ({
+export function toggleCash(period: string, householdId: string) {
+  updatePeriod(period, (r) => ({
     ...r,
     cash: r.cash.includes(householdId)
       ? r.cash.filter((id) => id !== householdId)

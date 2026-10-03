@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/", label: "每月對帳" },
+  { href: "/", label: "每期對帳" },
   { href: "/households", label: "住戶管理" },
   { href: "/history", label: "歷史紀錄" },
   { href: "/settings", label: "設定備份" },
@@ -13,9 +13,9 @@ const LINKS = [
 export function Nav() {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur print:hidden">
+    <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center gap-4 px-4">
-        <span className="hidden shrink-0 py-3 font-bold text-emerald-700 sm:block">管理費對帳</span>
+        <span className="hidden shrink-0 py-3 font-bold text-emerald-700 sm:block">世貿龍庭管理費對帳表</span>
         <nav className="flex flex-1 justify-between gap-1 sm:justify-end">
           {LINKS.map((link) => {
             const active = pathname === link.href;

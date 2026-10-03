@@ -6,11 +6,3 @@ body {
     sans-serif;
 }
 
-@media print {
-  @page {
-    margin: 15mm;
-  }
-  body {
-    background: white;
-  }
-}

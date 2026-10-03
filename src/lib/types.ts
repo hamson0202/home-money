@@ -9,9 +9,9 @@ export type Household = {
 };
 
 export type MonthRecord = {
-  /** 當月輸入的轉帳末五碼（不重複） */
+  /** 當期輸入的轉帳末五碼（不重複） */
   codes: string[];
-  /** 當月手動標記為現金繳費的住戶 id */
+  /** 當期手動標記為現金繳費的住戶 id */
   cash: string[];
 };
 
@@ -19,7 +19,7 @@ export type AppData = {
   version: 1;
   communityName: string;
   households: Household[];
-  /** key 為 "YYYY-MM" */
+  /** 每一期的對帳紀錄，key 為 "YYYY-01"（上半年）或 "YYYY-07"（下半年） */
   months: Record<string, MonthRecord>;
   lastBackupAt: string | null;
 };
